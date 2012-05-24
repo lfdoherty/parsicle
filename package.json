@@ -1,0 +1,13 @@
+{
+	"name": "parsicle",
+	"version": "0.1.1",
+	"description": "A library for creating serializers and deserializers for JSON-like schema.",
+	"main": "./parsicle",
+	"author": "Liam Doherty",
+	"dependencies" : { 
+		"underscorem": ">0.1"
+	},
+	"engines": {
+		 "node" : "0.6"
+	}
+}

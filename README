@@ -1,0 +1,3 @@
+Parsicle is a generator for binary serializers and parsers which converts JSON to binary based on a simple, internal domain-specific language.
+
+See the examples folder for usage.
