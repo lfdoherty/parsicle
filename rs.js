@@ -3,7 +3,7 @@ var bin = require('./bin');
 
 var ccc = console.log
 
-function makeReadState(){
+function makeReadState(throwOnHasFail){
 	var bufs = [];
 
 	var realGot = 0;
@@ -19,14 +19,13 @@ function makeReadState(){
 		},
 		readInt: function(){
 			mergeIfNecessary(4);
-			//_.assert(cur.length >= off+4);
 			var v = bin.readInt(cur, off);
-			//console.log('read int: ' + v)
 			off+=4;
 			got-=4;
 			return v;
 		},
 		readString: function(len){
+			_.assertInt(len)
 			mergeIfNecessary(len);
 			var v = cur.toString('utf8', off, off+len);
 			off += len;
@@ -34,8 +33,9 @@ function makeReadState(){
 			return v;
 		},
 		readData: function(len){
+			_.assertInt(len)
 			mergeIfNecessary(len);
-			var v = cur.slice(off, off+len)//toString('utf8', off, off+len);
+			var v = cur.slice(off, off+len)
 			off += len;
 			got -= len;
 			return v;
@@ -48,16 +48,13 @@ function makeReadState(){
 			return v;
 		},
 		has: function(many){
-			//if(got < many){
-				//if(ccc !== console.log) 
-			//	console.log('need ' + many + ', got ' + got);
-			//}
 			var h = got >= many;
 			if(!h){
 				needs = many - got
 				ranOut = true;
-				//throw new Error();
-				//console.log('ran out (' + many + ') at ' + new Error().stack);
+				if(throwOnHasFail){
+					throw new Error('ran out (' + many + ') at ' + new Error().stack)
+				}
 			}
 			return h;
 		},
@@ -70,14 +67,12 @@ function makeReadState(){
 		},
 		readBoolean: function(){
 			mergeIfNecessary(1);
+			_.assert(s.has(1))
 			var b = cur[off];
-
-			//console.log(off);
-			//console.log('b: ' + b);
-			//console.log(cur);
 
 			++off;
 			--got;
+			if(b !== 0 && b !== 1) console.log('b: ' + b)
 			_.assert(b === 0 || b === 1);
 			return b === 1;
 		},
@@ -112,25 +107,20 @@ function makeReadState(){
 			console.log('quick: ' + str);
 		}
 	}
+	s.readVarUint = s.readLength
 
 	function mergeIfNecessary(len){
 		while(cur.length - off < len){
-			//console.log('merging to get ' + len + ' ' + cur.length + ' ' + off + ' ' + realOff)
-			//console.log(new Error().stack)
 			merge();
 		}
 	}
 
 	function merge(){
-		//_.errout('TODO');
 		_.assert(bufs.length > 1);
 
-		//console.log('off: ' + off + ' realOff: ' + realOff);
-		
 		var next = bufs[1];
 		var n = new Buffer(next.length+(cur.length-realOff));
 		cur.copy(n, 0, realOff);
-		//console.log(next.length + ' ' + cur.length + ' ' + realOff);
 		next.copy(n, (cur.length-realOff));
 		off = off - realOff;
 		realOff = 0;
@@ -139,8 +129,6 @@ function makeReadState(){
 		bufs[0] = n;
 		
 		if(bufs.length === 1) _.assertEqual(n.length, realGot);
-		//console.log('merged, result: ' + n.length + ' got(' + got + '), realGot(' + realGot + ')');
-		//console.log('off: ' + off + ' realOff: ' + realOff);
 	}
 	
 	return {
@@ -159,10 +147,6 @@ function makeReadState(){
 			ranOut = undefined;
 		},
 		put: function(buf){
-			//console.log('put: ' + buf.length)
-			//for(var i=0;i<buf.length;++i){
-			//	console.log(buf[i])
-			//}// + //JSON.stringify(buf.slice(0,Math.min(buf.length,100))));
 			if(bufs.length === 0){
 				cur = buf;
 				realOff = 0;
@@ -176,3 +160,4 @@ function makeReadState(){
 	}
 }
 exports.make = makeReadState;
+

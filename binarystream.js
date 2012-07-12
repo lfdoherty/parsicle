@@ -9,6 +9,49 @@ var _ = require('underscorem');
 
 var optimizer = require('./optimizer');
 
+function makeIdReader(s){
+	var byInts = {}
+	return function(){
+		if(!s.has(1)) return
+		var isNew = s.readBoolean()
+		if(isNew){
+			var idLen = s.readLength()
+			if(idLen === undefined) return
+			if(!s.has(idLen)) return
+			var id = s.readString(idLen)
+			var ci = s.readVarUint()
+			//console.log('made new id: ' + id + ' ' + JSON.stringify(byInts))
+			if(ci === undefined) return
+			//byInts[ci] = id;
+			return id
+		}/*else{
+			var ci = s.readVarUint()
+			if(ci === undefined) return;
+			console.log('got id')
+			var code = byInts[ci]
+			_.assertString(code)
+			return code
+		}*/
+	}
+}
+function makeCodeWriter(w){
+	var codeInts = {}
+	var codeIntCounter = 0;
+	return function(code){
+		var ci = codeInts[code]
+		//if(ci === undefined){
+			ci = codeIntCounter;
+			++codeIntCounter
+			//codeInts[code] = ci
+			w.putBoolean(true)
+			w.putString(code+'')
+			w.putVarUint(ci)
+		/*}else{
+			w.putBoolean(false)
+			w.putVarUint(ci)
+		}*/
+	}
+}
 exports.add = function(wrapped, state, handle){
 
 	function makeBinaryStreamReader(reader){
@@ -65,6 +108,7 @@ exports.add = function(wrapped, state, handle){
 			//if(ccc !== console.log) console.log('idCode: ' + idCode)
 
 			if(br === undefined){
+				console.log('got: ' + JSON.stringify(Object.keys(baseReaders)))
 				_.errout('internal error, no reader for idCode: ' + idCode);
 			}
 			var result = br();
@@ -74,15 +118,24 @@ exports.add = function(wrapped, state, handle){
 			return result;		
 		}
 		
+		readObject.idReader = makeIdReader(s)
+		
 		function selector(noReader){
-			if(!s.has(4)){
+			//if(!s.has(4)){
 				//if(ccc !== console.log) console.log('no parser int')
-				return;
-			}
-			var idCode = s.readInt();
+			//	return;
+			//}
+			//var idCode = s.readInt();
 
-			var id = state.ids[idCode];
-			var obj = readObject(idCode);
+			//var id = state.ids[idCode];
+			/*var idLen = s.readLength()
+			if(idLen === undefined) return
+			if(!s.has(idLen)) return
+			var id = s.readString(idLen)*/
+			var id = readObject.idReader()
+			if(id === undefined) return
+			
+			var obj = readObject(id);
 			if(obj !== undefined){
 				if(!noReader){
 					var typeReader = reader[id];
@@ -99,6 +152,7 @@ exports.add = function(wrapped, state, handle){
 		
 		readObject.selector = selector;
 		readObject.ids = state.ids;
+		readObject.realIds = state.realIds;
 
 		
 
@@ -115,19 +169,25 @@ exports.add = function(wrapped, state, handle){
 
 		function getWrappedReader(name, count){
 
+			//var localIdReader = makeIdReader(s)
+
 			var rrm = wrappedReader;
 			for(var i=1;i<count;++i){
 				rrm = wrappedReader.getWrapper();
 			}
 
 			return function(){
-				if(!s.has(4)) return;
-				var idCode = s.readInt();
-				var id = rrm.ids[idCode];
-				var result = rrm(idCode)
+
+				var id = rrm.idReader()//localIdReader()
+				if(id === undefined) return
+
+				var result = rrm(id)
 				
 				if(result){
-					return {type: id, object: result};
+					var realId = rrm.realIds[id]
+					//console.log('realIds(' + id + '): ' + JSON.stringify(state.realIds))
+					_.assertDefined(realId)
+					return {type: realId, object: result};
 				}
 			}
 		}
@@ -139,7 +199,7 @@ exports.add = function(wrapped, state, handle){
 	
 		state.ids.forEach(function(id, idCode){
 			var parser = readParsers[id];
-			var br = baseReaders[idCode] = binaryReader.make(parser, s, getReader,getWrappedReader);
+			var br = baseReaders[id] = binaryReader.make(parser, s, getReader,getWrappedReader);
 			
 			_.assertFunction(br);
 
@@ -167,30 +227,13 @@ exports.add = function(wrapped, state, handle){
 		
 		_.assertInt(bufferSize)
 		
-		var w = new bufw(bufferSize, ws)/*{
-			write: function(buf){
-				bufferCb(buf);
-			},
-			end: function(cb){
-				if(endCb){
-					if(cb){
-						endCb(cb);
-					}else{
-						endCb();
-					}
-				}else{
-					if(cb){
-						cb();
-					}
-				}
-			}
-		});*/
+		var w = new bufw(bufferSize, ws)
 		
 		return makeBinaryStreamWriterInternal(w);
 	}
 	
 	function makeBinaryStreamWriterInternal(w){
-		var writeParsers = JSON.parse(JSON.stringify(state.parsers));
+		var writeParsers = _.extend({}, state.parsers)//JSON.parse(JSON.stringify(state.parsers));
 		writeParsers.codeCount = state.ids.length;
 
 		var wrappedWriter = wrapped ? wrapped.binary.stream._internalMakeWriter(w).internal : undefined;
@@ -263,28 +306,31 @@ exports.add = function(wrapped, state, handle){
 		
 		var dummyProcessors = {};
 		
+		//var codeInts = {}
+		//var codeIntCounter = 0
+		
+		var writeCode = makeCodeWriter(w)
+		
 		state.ids.forEach(function(parserId){
 			var parser = state.parsers[parserId];
-			var localIdCode = state.idCodes[parserId];
 			var jf = maker(parser)
 
 			after.push(function(){
 				optimizer.optimize(jf, parser, makeWriter);
 			})
 
-			dummyProcessors[localIdCode] = jf;
+			dummyProcessors[parserId] = jf;
 			
 			var njf = jf;
-
+			
 			var rf = unwrapped[parserId] = function(json){
 				_.assertDefined(json);
 				
 				var sf = jf.specialize(json);
-				var code = localIdCode;
+				var code = parserId;
 				if(sf !== jf) code = sf.code;
-				_.assertInt(code)
 
-				w.putInt(code);
+				writeCode(code)
 				sf(json);
 				sf.optimize(json, writeParsers, state.ids, dummyProcessors)
 			}
@@ -304,8 +350,8 @@ exports.add = function(wrapped, state, handle){
 		for(var i=0;i<after.length;++i){after[i]();}
 		after = undefined;
 		
-		h.end = function(cb){
-			w.close(cb);
+		h.end = function(cb, skipWrite){
+			w.close(cb, skipWrite);
 		}
 		h.flush = function(cb){
 			w.flush(cb);

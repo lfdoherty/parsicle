@@ -1,23 +1,14 @@
 var _ = require('underscorem');
 
 function isPrimitive(pt){
-	return pt === 'int' || pt === 'string' || pt === 'constant' || pt === 'boolean' || pt === 'byte' || pt === 'long' || pt === 'binary';
+	return pt === 'int' || pt === 'string' || pt === 'constant' || pt === 'boolean' || pt === 'byte' || pt === 'long' || pt === 'binary' || pt === 'real';
 }
 //var ccc = console.log
 function makePrimitiveReader(type, s,part){
 	if(type === 'int'){
 		return function(){
-			if(!s.has(4)){
-				//if(console.log !== ccc){
-				//	console.log('no has int')
-				//}
-				return;
-			}
-			var i = s.readInt();
-			//if(console.log !== ccc){
-				//console.log('read int: ' + i)
-			//}
-			return i;
+			if(!s.has(4)){return;}
+			return s.readInt();
 		}
 	}else if(type === 'string'){
 		return function(){
@@ -26,9 +17,15 @@ function makePrimitiveReader(type, s,part){
 			if(!s.has(len)) return;
 			return s.readString(len);
 		}
+	}else if(type === 'real'){
+		return function(){
+			var len = s.readLength();
+			if(len === undefined) return;
+			if(!s.has(len)) return;
+			return Number(s.readString(len));
+		}
 	}else if(type === 'constant'){
 		return function(){
-			//console.log('"read" constant: ' + part.value)
 			return part.value;
 		}
 	}else if(type === 'boolean'){
@@ -287,28 +284,47 @@ function makeEitherReader(ast, s, getReader,getWrappedReader){
 	
 	var options = [];
 	var readersByType = {};
+	var hasObjectType = false
+	var typeToRealTypeMap = {}
 	for(var i=0;i<ast.length;++i){
 		var a = ast[i];
 		var type = getReaderName(a)
 		if(a.type === 'include'){
-			type = 'object';//TODO correct this
-		}
-		options.push(type);
+			type = a.name//'object';//TODO correct this
+			typeToRealTypeMap[a.name] = a.name
+			hasObjectType = true
+			readersByType[type] = getReader().bind(undefined, a.name)
+		}else{
+		//options.push(type);
 
-		readersByType[type] = makeSpecificReader(a, s, getReader,getWrappedReader)
+			readersByType[type] = makeSpecificReader(a, s, getReader,getWrappedReader)
+		}
 	}
 	//console.log('either after: ' + after)
-	options.sort();
+	/*options.sort();
 	var readers = [];
 	for(var i=0;i<options.length;++i){
 		var type = options[i];
 		readers[i] = readersByType[type];
-	}
+	}*/
 	function f(){
-		if(!s.has(1)) return;
-		var b = s.readByte();
-		//console.log('code: ' + b + ' ' + JSON.stringify(options))
-		var r = readers[b];
+		//if(!s.has(1)) return;
+		
+		var len = s.readLength()
+		if(len === undefined) return
+		if(!s.has(len)) return
+		var b = s.readString(len)
+		if(b === undefined) return;
+		_.assertString(b)
+		//if(typeToRealTypeMap[b]) b = typeToRealTypeMap[b];
+		var r = readersByType[b];
+
+		if(r === undefined) {
+			console.log('got ' + JSON.stringify(Object.keys(readersByType)))
+			_.errout('no reader found for either code(' + b + ')')
+		}else{
+			//console.log('read either: ' + b)
+		}
 		return r();
 	}
 	return f;
@@ -339,6 +355,7 @@ function makeObjectReader(ast, s, getReader,getWrappedReader){
 		var obj = {};
 		var worked = nextStep(obj);
 		if(worked === undefined) return;
+		//console.log('done object')
 		return obj;
 	}
 	return readObject;

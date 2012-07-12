@@ -41,22 +41,26 @@ exports.add = function(wrapped, state, handle){
 		//}
 		//return input;
 
-		var ss = rs.make();
+		var ss = rs.make(true);
 		var s = ss.s;
 
 		var selector = makeBinarySingleReaderInternal(reader, s).selector;
 		
 		return function(buf){
 			ss.reset()
-
+			//console.log('begin top-level single read')
 			_.assertBuffer(buf)
 			ss.put(buf);
 			var result = selector(true);
 			if(result === undefined){
 				_.errout('single parsing error, needs more bytes: ' + ss.needs())
 			}
+			//console.log('result: ' + JSON.stringify(result))
 			ss.assertEmpty()
 			_.assertDefined(result)
+
+			//console.log('done top-level single read')
+			//console.log(new Error().stack)
 			return result;
 		}
 	}
@@ -71,6 +75,7 @@ exports.add = function(wrapped, state, handle){
 		readParsers.codeCount = state.ids.length;
 		
 		function readObject(idCode){
+			//console.log('reading object with idCode: ' + idCode)
 			var br = baseReaders[idCode];
 
 			//if(ccc !== console.log) console.log('idCode: ' + idCode)
@@ -86,14 +91,18 @@ exports.add = function(wrapped, state, handle){
 		}
 		
 		function selector(noReader){
-			if(!s.has(4)){
+			//console.log('in single selector ^^^^^^^^6')
+			//if(!s.has(4)){
 				//if(ccc !== console.log) console.log('no parser int')
 				//return;
-				_.errout('not enough data to read type (less than 4 bytes!)')
-			}
-			var idCode = s.readInt();
+			//	_.errout('not enough data to read type (less than 4 bytes!)')
+			//}
+			var idCodeLen = s.readLength()
+			if(idCodeLen === undefined) _.errout('not enough data')
+			var idCode = s.readString(idCodeLen)//s.readInt();
+			if(idCode === undefined) _.errout('not enough data')
 
-			var id = state.ids[idCode];
+			var id = idCode//state.ids[idCode];
 			var obj = readObject(idCode);
 			if(obj !== undefined){
 				if(!noReader){
@@ -102,6 +111,8 @@ exports.add = function(wrapped, state, handle){
 						console.log('ids: ' + JSON.stringify(state.ids))
 						console.log('got: ' + JSON.stringify(Object.keys(baseReaders)));
 						_.errout('no reader defined for: ' + id);
+					}else{
+						//console.log('reading single: ' + id)
 					}
 					typeReader(obj);
 				}
@@ -120,7 +131,7 @@ exports.add = function(wrapped, state, handle){
 		
 		var after = [];
 		function getReader(){
-			return selector;
+			return readObject;
 		}
 		
 		var wrappedReader = wrapped ? wrapped.binary.single._internalMakeReader({},s) : undefined;
@@ -134,9 +145,13 @@ exports.add = function(wrapped, state, handle){
 			}
 
 			return function(){
-				if(!s.has(4)) return;
-				var idCode = s.readInt();
-				var id = rrm.ids[idCode];
+				//if(!s.has(1)) return;
+				var len = s.readLength()
+				if(len === undefined) return
+				var idCode = s.readString(len)
+				if(idCode === undefined) return
+				//var idCode = //s.readInt();
+				var id = idCode//rrm.ids[idCode];
 				var result = rrm(idCode)
 				
 				if(result){
@@ -152,7 +167,7 @@ exports.add = function(wrapped, state, handle){
 	
 		state.ids.forEach(function(id, idCode){
 			var parser = readParsers[id];
-			var br = baseReaders[idCode] = binaryReader.make(parser, s, getReader,getWrappedReader);
+			var br = baseReaders[id] = binaryReader.make(parser, s, getReader,getWrappedReader);
 			
 			_.assertFunction(br);
 
@@ -269,15 +284,16 @@ exports.add = function(wrapped, state, handle){
 		var dummyProcessors = {};
 		
 		state.ids.forEach(function(parserId){
+			//_.assertString(parserId)
 			var parser = state.parsers[parserId];
-			var localIdCode = state.idCodes[parserId];
+			//var localIdCode = state.idCodes[parserId];
 			var jf = maker(parser)
 
 			after.push(function(){
 				optimizer.optimize(jf, parser, makeWriter);
 			})
 
-			dummyProcessors[localIdCode] = jf;
+			dummyProcessors[parserId] = jf;
 			
 			var njf = jf;
 
@@ -285,11 +301,13 @@ exports.add = function(wrapped, state, handle){
 				_.assertDefined(json);
 				
 				var sf = jf.specialize(json);
-				var code = localIdCode;
+				var code = parserId;
 				if(sf !== jf) code = sf.code;
 				_.assertInt(code)
 
-				w.putInt(code);
+				//w.putInt(code);
+				//_.assertString(code)
+				w.putString(code+'')
 				sf(json);
 				sf.optimize(json, writeParsers, state.ids, dummyProcessors)
 			}

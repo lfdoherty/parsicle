@@ -9,6 +9,7 @@ var EitherFilters = {
 	int: _.isInt,
 	long: _.isLong,
 	array: _.isArray,
+	real: function(json){return _.isNumber(json) && !_.isInt(json);},
 	object: function(json){
 				return !_.isArray(json) && !_.isString(json) && _.isObject(json);
 			},
@@ -25,6 +26,10 @@ function makeWriterMaker(w, getWriter, getWrappedWriter){
 			throw new Error('not a string: ' + json);
 		}
 		w.putString(json);
+	}
+	function realWriter(json){
+		if(typeof(json) !== 'number') throw new Error('not a number');		
+		w.putString(''+json);
 	}
 	function binaryWriter(json){
 		if(!Buffer.isBuffer(json)) _.errout('not a buffer: ' + typeof(json) + ' ' + JSON.stringify(json).slice(0, 100));
@@ -194,6 +199,8 @@ function makeWriterMaker(w, getWriter, getWrappedWriter){
 			}
 		}else if(part.type === 'string'){
 			return stringWriter;
+		}else if(part.type === 'real'){
+			return realWriter;
 		}else if(part.type === 'binary'){
 			return binaryWriter;
 		}else if(part.type === 'include'){
@@ -221,8 +228,10 @@ function makeWriterMaker(w, getWriter, getWrappedWriter){
 				var p = part.children[i];
 				var type = p.type;
 				if(type === 'include'){
-					type = 'object';//TODO correct this
+					type = p.name//'object';//TODO correct this
+					//console.log('include type is object: ' + JSON.stringify(p))
 				}
+				//_.assertString(type)
 				types.push(type);
 				writersByType[type] = makeWriter([p], 0);
 			}
@@ -231,7 +240,10 @@ function makeWriterMaker(w, getWriter, getWrappedWriter){
 				var type = types[i];
 				writers[i] = writersByType[type];
 				var fff = EitherFilters[type];
-				if(fff === undefined) _.errout('no either filter for type: ' + type);
+				if(fff === undefined){
+					//_.errout('no either filter for type: ' + type);
+					fff = EitherFilters.object
+				}
 				_.assertFunction(fff);
 				checkers[i] = fff
 			}
@@ -244,8 +256,18 @@ function makeWriterMaker(w, getWriter, getWrappedWriter){
 						//if(types.length === 2 && types[1] === 'int' && types[0] === 'object' && i === 0){
 						//	_.errout('invalid choice: ' + JSON.stringify(json))
 						//}
-						w.putByte(i);
-						writers[i](json);
+						//w.putByte(i);
+						//console.log('wrote either type: ' + types[i] + ' ' + ' for ' + JSON.stringify(json))
+						//console.log(checker)
+						//console.log(JSON.stringify(part))
+						//console.log(JSON.stringify(types))
+						//console.log(new Error().stack)
+						var type = types[i]
+						//w.putString(type+'')
+						if(checker !== EitherFilters.object){
+							w.putString(type)
+						}
+						writersByType[type](json);
 						return;
 					}
 				}

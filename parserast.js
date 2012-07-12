@@ -85,6 +85,10 @@ ParserAst.prototype.byte = function(){
 	this.children.push({type: 'byte'});
 	return this;
 }
+ParserAst.prototype.real = function(){
+	this.children.push({type: 'real'});
+	return this;
+}
 
 function ParserAstObject(parent){
 	init(this, parent);
@@ -154,6 +158,9 @@ ParserAstSingle.prototype.byte = function(){
 ParserAstSingle.prototype.binary = function(){
 	ParserAst.prototype.binary.apply(this);
 }
+ParserAstSingle.prototype.real = function(){
+	ParserAst.prototype.real.apply(this);
+}
 ParserAstSingle.prototype.include = function(name){
 	ParserAst.prototype.include.call(this, name);
 }
@@ -209,6 +216,7 @@ function ParserAstLoop(parent){
 ParserAstLoop.prototype.array = ParserAstSingle.prototype.array
 ParserAstLoop.prototype.include = ParserAstSingle.prototype.include
 ParserAstLoop.prototype.int = ParserAstSingle.prototype.int
+ParserAstLoop.prototype.boolean = ParserAstSingle.prototype.boolean
 ParserAstLoop.prototype.string = ParserAstSingle.prototype.string
 ParserAstLoop.prototype.wrapped = ParserAstSingle.prototype.wrapped
 ParserAstLoop.prototype.object = ParserAst.prototype.object

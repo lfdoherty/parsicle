@@ -26,7 +26,8 @@ function make(wrapped, cb){
 	var state = {
 		ids: [],
 		parsers: {},
-		idCodes: {}
+		idCodes: {},
+		realIds: {}
 	}
 	
 	var handle = {
@@ -35,6 +36,7 @@ function make(wrapped, cb){
 	}
 
 	cb(function(id, type, cb){
+		//_.assertInt(id)
 		if(state.parsers[id] !== undefined){
 			throw new Error('parser id already taken: ' + id);
 		}
@@ -46,13 +48,15 @@ function make(wrapped, cb){
 		
 		state.parsers[id] = p;
 		p.id = id;
+		//console.log('p(' + id + '): ' + JSON.stringify(p))
 	})
 	
 	
 	state.ids.sort();
 	Object.freeze(state.ids)
 	for(var i=0;i<state.ids.length;++i){
-		state.idCodes[state.ids[i]] = i;
+		//state.idCodes[state.ids[i]] = i;
+		state.realIds[state.ids[i]] = state.ids[i]
 		state.parsers[state.ids[i]].code = i;
 		//console.log(require('util').inspect(state.parsers[state.ids[i]], null, 9))
 	}
